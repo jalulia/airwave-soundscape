@@ -160,21 +160,23 @@ export function Visualizer({
       ctx.fillStyle = bgGradient;
       ctx.fillRect(0, 0, width, height);
 
-      // Layer 1: Mist particles (blue/teal cloudy)
-      const mistDensity = 1 - clarity * 0.6;
+      // Layer 1: Blue/cyan cloud mist particles
+      const mistDensity = 1 - clarity * 0.7;
       mistParticlesRef.current.forEach(particle => {
-        particle.x += particle.vx + Math.sin(time * 0.4 + particle.y * 0.008) * 0.25;
-        particle.y += particle.vy + Math.cos(time * 0.25 + particle.x * 0.008) * 0.15;
+        particle.x += particle.vx + Math.sin(time * 0.3 + particle.y * 0.006) * 0.2;
+        particle.y += particle.vy + Math.cos(time * 0.2 + particle.x * 0.006) * 0.12;
 
         if (particle.x < -particle.size) particle.x = width + particle.size;
         if (particle.x > width + particle.size) particle.x = -particle.size;
         if (particle.y < -particle.size) particle.y = height + particle.size;
         if (particle.y > height + particle.size) particle.y = -particle.size;
 
+        // Blue/cyan cloud gradient
         const gradient = ctx.createRadialGradient(particle.x, particle.y, 0, particle.x, particle.y, particle.size);
         const opacityMod = particle.opacity * mistDensity;
-        gradient.addColorStop(0, colors.mist.replace('0.3', String(opacityMod)));
-        gradient.addColorStop(0.4, colors.primary.replace('0.25', String(opacityMod * 0.6)));
+        gradient.addColorStop(0, `rgba(140, 200, 230, ${opacityMod * 0.5})`);
+        gradient.addColorStop(0.3, `rgba(120, 180, 210, ${opacityMod * 0.35})`);
+        gradient.addColorStop(0.6, `rgba(100, 170, 200, ${opacityMod * 0.15})`);
         gradient.addColorStop(1, 'transparent');
 
         ctx.fillStyle = gradient;
@@ -224,81 +226,110 @@ export function Visualizer({
         ctx.fillRect(0, 0, width, height);
       }
 
-      // Layer 3: Spray nodes (blue misty ripples)
+      // Layer 3: Spray nodes (cyan/blue water droplet ripples)
       sprayNodesRef.current = sprayNodesRef.current.filter(node => {
-        node.radius += 2.5;
-        node.opacity *= 0.95;
+        node.radius += 2;
+        node.opacity *= 0.94;
 
-        // Ripple ring - blue tinted
-        ctx.strokeStyle = `rgba(120, 180, 200, ${node.opacity * 0.6})`;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
-        ctx.stroke();
+        // Ripple rings - cyan blue tinted, multiple rings
+        for (let ring = 0; ring < 3; ring++) {
+          const ringRadius = node.radius - ring * 8;
+          if (ringRadius > 0) {
+            ctx.strokeStyle = `rgba(80, 180, 220, ${node.opacity * 0.4 * (1 - ring * 0.3)})`;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, ringRadius, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        }
 
-        // Inner mist burst
-        const mistGrad = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, node.radius * 0.6);
-        mistGrad.addColorStop(0, `rgba(180, 220, 240, ${node.opacity * 0.3})`);
+        // Inner cyan mist burst
+        const mistGrad = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, node.radius * 0.5);
+        mistGrad.addColorStop(0, `rgba(140, 210, 240, ${node.opacity * 0.25})`);
+        mistGrad.addColorStop(0.5, `rgba(100, 190, 230, ${node.opacity * 0.12})`);
         mistGrad.addColorStop(1, 'transparent');
         ctx.fillStyle = mistGrad;
         ctx.beginPath();
-        ctx.arc(node.x, node.y, node.radius * 0.6, 0, Math.PI * 2);
+        ctx.arc(node.x, node.y, node.radius * 0.5, 0, Math.PI * 2);
         ctx.fill();
 
-        // Particles - blue/white sparkles
+        // Particles - cyan/white water droplets
         node.particles = node.particles.filter(p => {
-          p.x += p.vx;
-          p.y += p.vy;
-          p.vy += 0.03;
-          p.life *= 0.94;
+          p.x += p.vx * 0.8;
+          p.y += p.vy * 0.8;
+          p.vy += 0.025;
+          p.life *= 0.93;
 
           if (p.life > 0.1) {
-            const pGrad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 4 + p.life * 4);
-            pGrad.addColorStop(0, `rgba(220, 240, 255, ${p.life * 0.8})`);
-            pGrad.addColorStop(0.5, `rgba(160, 200, 220, ${p.life * 0.4})`);
-            pGrad.addColorStop(1, 'transparent');
-            ctx.fillStyle = pGrad;
+            // Small cyan dots
+            ctx.fillStyle = `rgba(120, 200, 240, ${p.life * 0.7})`;
             ctx.beginPath();
-            ctx.arc(p.x, p.y, 4 + p.life * 4, 0, Math.PI * 2);
+            ctx.arc(p.x, p.y, 2 + p.life * 3, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Tiny white highlight
+            ctx.fillStyle = `rgba(255, 255, 255, ${p.life * 0.5})`;
+            ctx.beginPath();
+            ctx.arc(p.x - 1, p.y - 1, 1, 0, Math.PI * 2);
             ctx.fill();
           }
           return p.life > 0.05;
         });
 
-        return node.opacity > 0.05;
+        return node.opacity > 0.04;
       });
 
-      // Layer 4: Glimmer targets
+      // Layer 4: Glimmer targets - dithered sparkle dots
       activeGlimmers.forEach(glimmer => {
         const gx = glimmer.x * width;
         const gy = glimmer.y * height;
         const age = (Date.now() - glimmer.spawnTime) / 1000;
-        const pulse = Math.sin(age * 4) * 0.3 + 0.7;
+        const pulse = Math.sin(age * 3) * 0.25 + 0.75;
         const fadeIn = Math.min(age * 2, 1);
 
-        const glowGradient = ctx.createRadialGradient(gx, gy, 0, gx, gy, 28);
-        glowGradient.addColorStop(0, `rgba(255, 255, 255, ${0.9 * pulse * fadeIn})`);
-        glowGradient.addColorStop(0.35, `rgba(180, 230, 240, ${0.5 * pulse * fadeIn})`);
+        // Outer dithered dot field
+        const dotCount = 24;
+        for (let i = 0; i < dotCount; i++) {
+          const angle = (i / dotCount) * Math.PI * 2 + age * 0.5;
+          const dist = 12 + Math.sin(age * 2 + i) * 6 + pulse * 4;
+          const dotX = gx + Math.cos(angle) * dist;
+          const dotY = gy + Math.sin(angle) * dist;
+          const dotSize = 1.5 + Math.sin(age * 4 + i * 0.5) * 0.8;
+          
+          ctx.fillStyle = `rgba(180, 220, 255, ${0.6 * fadeIn * (0.5 + Math.sin(age * 3 + i) * 0.5)})`;
+          ctx.beginPath();
+          ctx.arc(dotX, dotY, dotSize, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Inner ring of smaller dots
+        const innerDots = 12;
+        for (let i = 0; i < innerDots; i++) {
+          const angle = (i / innerDots) * Math.PI * 2 - age * 0.8;
+          const dist = 6 + pulse * 2;
+          const dotX = gx + Math.cos(angle) * dist;
+          const dotY = gy + Math.sin(angle) * dist;
+          
+          ctx.fillStyle = `rgba(220, 245, 255, ${0.8 * fadeIn * pulse})`;
+          ctx.beginPath();
+          ctx.arc(dotX, dotY, 1.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Center bright dot
+        ctx.fillStyle = `rgba(255, 255, 255, ${0.95 * fadeIn * pulse})`;
+        ctx.beginPath();
+        ctx.arc(gx, gy, 3, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Soft cyan glow behind
+        const glowGradient = ctx.createRadialGradient(gx, gy, 0, gx, gy, 20);
+        glowGradient.addColorStop(0, `rgba(140, 220, 255, ${0.15 * pulse * fadeIn})`);
         glowGradient.addColorStop(1, 'transparent');
         ctx.fillStyle = glowGradient;
         ctx.beginPath();
-        ctx.arc(gx, gy, 28, 0, Math.PI * 2);
+        ctx.arc(gx, gy, 20, 0, Math.PI * 2);
         ctx.fill();
-
-        ctx.fillStyle = `rgba(255, 255, 255, ${0.95 * fadeIn})`;
-        ctx.beginPath();
-        ctx.arc(gx, gy, 4 + pulse * 2, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.strokeStyle = `rgba(200, 240, 255, ${0.6 * pulse * fadeIn})`;
-        ctx.lineWidth = 1.5;
-        for (let r = 0; r < 4; r++) {
-          const angle = (r / 4) * Math.PI * 2 + age;
-          ctx.beginPath();
-          ctx.moveTo(gx + Math.cos(angle) * 6, gy + Math.sin(angle) * 6);
-          ctx.lineTo(gx + Math.cos(angle) * (12 + pulse * 4), gy + Math.sin(angle) * (12 + pulse * 4));
-          ctx.stroke();
-        }
       });
 
       // Subtle grid

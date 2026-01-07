@@ -18,9 +18,12 @@ export default function Index() {
     soundEngine.applyScent(state.scent);
   }, [state.scent]);
 
+  // Focus now affects clarity directly - higher focus = faster clarity gain
   useEffect(() => {
-    soundEngine.updateClarity(state.clarity);
-  }, [state.clarity]);
+    // Combine focus with clarity for the audio engine
+    const effectiveClarity = state.clarity * (0.6 + state.focus * 0.4);
+    soundEngine.updateClarity(effectiveClarity);
+  }, [state.clarity, state.focus]);
 
   useEffect(() => {
     soundEngine.setSprayStrength(state.sprayStrength);
