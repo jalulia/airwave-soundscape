@@ -23,6 +23,7 @@ interface SprayNode {
 
 interface VisualizerProps {
   clarity: number;
+  focus: number;
   scent: ScentVariant;
   mode: 'exploring' | 'collecting' | 'looping';
   floatingNotes: FloatingNote[];
@@ -60,6 +61,7 @@ const SCENT_COLORS: Record<ScentVariant, { primary: string; secondary: string; a
 
 export function Visualizer({
   clarity,
+  focus,
   scent,
   mode,
   floatingNotes,
@@ -189,35 +191,55 @@ export function Visualizer({
         ctx.fill();
       });
 
-      // Layer 2: Interference rings
+      // Layer 2: Interference rings - respond to focus level
       const ringCount = 6;
       const maxRingRadius = Math.min(width, height) * 0.38;
-      const wobbleAmount = (1 - clarity) * 12;
-
-      ctx.strokeStyle = `rgba(100, 160, 180, ${0.12 + clarity * 0.18})`;
-      ctx.lineWidth = 1;
+      const wobbleAmount = (1 - focus) * 15; // Focus reduces wobble
+      const ringOpacity = 0.08 + focus * 0.25; // Focus increases ring visibility
 
       for (let i = 0; i < ringCount; i++) {
         const baseRadius = (maxRingRadius / ringCount) * (i + 1);
-        const wobble = Math.sin(time * 1.8 + i * 0.4) * wobbleAmount;
-        const jitter = (1 - clarity) * (Math.random() - 0.5) * 4;
+        const wobble = Math.sin(time * (2 - focus) + i * 0.4) * wobbleAmount;
+        const jitter = (1 - focus) * (Math.random() - 0.5) * 5;
+
+        // Ring color changes with focus
+        const ringHue = 180 + focus * 20;
+        ctx.strokeStyle = `hsla(${ringHue}, 40%, 50%, ${ringOpacity})`;
+        ctx.lineWidth = 1 + focus * 0.5;
 
         ctx.beginPath();
         ctx.arc(centerX + jitter, centerY + jitter, baseRadius + wobble, 0, Math.PI * 2);
         ctx.stroke();
 
-        if (clarity > 0.35) {
+        // Tick marks appear and stabilize with focus
+        if (focus > 0.25) {
           const tickCount = 12;
+          const tickOpacity = (focus - 0.25) * 1.3;
+          ctx.strokeStyle = `hsla(${ringHue}, 35%, 55%, ${tickOpacity * 0.5})`;
+          ctx.lineWidth = 1;
+          
           for (let t = 0; t < tickCount; t++) {
             const angle = (t / tickCount) * Math.PI * 2;
-            const innerR = baseRadius + wobble - 3;
-            const outerR = baseRadius + wobble + 3;
+            const tickWobble = (1 - focus) * Math.sin(time * 3 + t) * 2;
+            const innerR = baseRadius + wobble - 4 + tickWobble;
+            const outerR = baseRadius + wobble + 4 + tickWobble;
             ctx.beginPath();
             ctx.moveTo(centerX + Math.cos(angle) * innerR, centerY + Math.sin(angle) * innerR);
             ctx.lineTo(centerX + Math.cos(angle) * outerR, centerY + Math.sin(angle) * outerR);
             ctx.stroke();
           }
         }
+      }
+
+      // Focus glow in center when high
+      if (focus > 0.6) {
+        const focusGlow = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, maxRingRadius * 0.4);
+        focusGlow.addColorStop(0, `rgba(140, 220, 210, ${(focus - 0.6) * 0.2})`);
+        focusGlow.addColorStop(1, 'transparent');
+        ctx.fillStyle = focusGlow;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, maxRingRadius * 0.4, 0, Math.PI * 2);
+        ctx.fill();
       }
 
       // Looping mode glow
@@ -362,7 +384,7 @@ export function Visualizer({
       window.removeEventListener('resize', resizeCanvas);
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [clarity, scent, mode, floatingNotes]);
+  }, [clarity, focus, scent, mode, floatingNotes]);
 
   return (
     <canvas
