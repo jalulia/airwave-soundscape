@@ -105,50 +105,60 @@ class SoundEngine {
     if (this.isInitialized) return;
     await Tone.start();
 
-    this.limiter = new Tone.Limiter(-3).toDestination();
-    this.masterGain = new Tone.Gain(0.5).connect(this.limiter);
+    // Much softer master output
+    this.limiter = new Tone.Limiter(-6).toDestination();
+    this.masterGain = new Tone.Gain(0.25).connect(this.limiter);
 
-    this.reverb = new Tone.Reverb({ decay: 3, wet: 0.4 }).connect(this.masterGain);
+    // Softer, more airy reverb
+    this.reverb = new Tone.Reverb({ decay: 4.5, wet: 0.55 }).connect(this.masterGain);
     await this.reverb.generate();
 
-    this.chorus = new Tone.Chorus({ frequency: 0.5, delayTime: 3.5, depth: 0.3, wet: 0.3 }).connect(this.reverb);
+    // Gentle chorus for dreamy quality
+    this.chorus = new Tone.Chorus({ frequency: 0.15, delayTime: 4, depth: 0.15, wet: 0.25 }).connect(this.reverb);
     this.chorus.start();
 
-    this.padFilter = new Tone.Filter({ frequency: 800, type: 'lowpass', rolloff: -12, Q: 1 }).connect(this.chorus);
+    // Very soft ambient pad - barely audible drone
+    this.padFilter = new Tone.Filter({ frequency: 400, type: 'lowpass', rolloff: -24, Q: 0.5 }).connect(this.chorus);
     this.padSynth = new Tone.PolySynth(Tone.Synth, {
       oscillator: { type: 'sine' },
-      envelope: { attack: 2, decay: 1, sustain: 0.8, release: 3 },
-      volume: -20,
+      envelope: { attack: 4, decay: 2, sustain: 0.6, release: 5 },
+      volume: -32, // Much quieter
     }).connect(this.padFilter);
 
-    this.noiseFilter = new Tone.Filter({ frequency: 2000, type: 'lowpass', rolloff: -24 }).connect(this.chorus);
-    this.noiseGain = new Tone.Gain(0.12).connect(this.noiseFilter);
-    this.noiseSource = new Tone.Noise({ type: 'pink', volume: -22 }).connect(this.noiseGain);
+    // Soft air noise - like gentle breeze
+    this.noiseFilter = new Tone.Filter({ frequency: 1200, type: 'lowpass', rolloff: -48 }).connect(this.chorus);
+    this.noiseGain = new Tone.Gain(0.03).connect(this.noiseFilter); // Very quiet
+    this.noiseSource = new Tone.Noise({ type: 'pink', volume: -36 }).connect(this.noiseGain);
 
+    // Spray synth - softer, more bell-like
     this.spraySynth = new Tone.Synth({
-      oscillator: { type: 'triangle' },
-      envelope: { attack: 0.005, decay: 0.1, sustain: 0, release: 0.1 },
-      volume: -18,
+      oscillator: { type: 'sine' },
+      envelope: { attack: 0.02, decay: 0.25, sustain: 0, release: 0.3 },
+      volume: -24,
     }).connect(this.reverb);
 
-    this.sparkleFilter = new Tone.Filter({ frequency: 4000, type: 'bandpass', Q: 2 }).connect(this.reverb);
+    // Sparkle noise - whisper quiet
+    this.sparkleFilter = new Tone.Filter({ frequency: 3000, type: 'bandpass', Q: 1 }).connect(this.reverb);
     this.sparkleGain = new Tone.Gain(0).connect(this.sparkleFilter);
-    this.sparkleNoise = new Tone.Noise({ type: 'white', volume: -28 }).connect(this.sparkleGain);
+    this.sparkleNoise = new Tone.Noise({ type: 'white', volume: -40 }).connect(this.sparkleGain);
 
+    // Glimmer capture - gentle chime
     this.glimmerSynth = new Tone.Synth({
       oscillator: { type: 'sine' },
-      envelope: { attack: 0.01, decay: 0.3, sustain: 0.2, release: 0.5 },
-      volume: -14,
+      envelope: { attack: 0.05, decay: 0.5, sustain: 0.1, release: 0.8 },
+      volume: -22,
     }).connect(this.reverb);
 
+    // Closure synth - soft, warm chord
     this.closureSynth = new Tone.PolySynth(Tone.Synth, {
       oscillator: { type: 'sine' },
-      envelope: { attack: 0.05, decay: 0.3, sustain: 0.4, release: 1 },
-      volume: -12,
+      envelope: { attack: 0.1, decay: 0.5, sustain: 0.3, release: 1.5 },
+      volume: -20,
     }).connect(this.reverb);
 
-    this.suctionFilter = new Tone.Filter({ frequency: 200, type: 'lowpass', rolloff: -24 }).connect(this.masterGain);
-    this.suctionNoise = new Tone.Noise({ type: 'brown', volume: -22 }).connect(this.suctionFilter);
+    // Suction - very subtle
+    this.suctionFilter = new Tone.Filter({ frequency: 150, type: 'lowpass', rolloff: -48 }).connect(this.masterGain);
+    this.suctionNoise = new Tone.Noise({ type: 'brown', volume: -32 }).connect(this.suctionFilter);
 
     this.applyScent(this.currentScent);
     this.isInitialized = true;
@@ -168,20 +178,25 @@ class SoundEngine {
     this.clarity = Math.max(0, Math.min(1, value));
     const config = SCENT_CONFIGS[this.currentScent];
 
+    // Noise fades out gently as clarity increases
     if (this.noiseGain) {
-      this.noiseGain.gain.rampTo(0.15 * (1 - this.clarity * 0.8), 0.3);
+      this.noiseGain.gain.rampTo(0.04 * (1 - this.clarity * 0.85), 0.5);
     }
+    // Filter opens as clarity increases
     if (this.noiseFilter) {
-      this.noiseFilter.frequency.rampTo(800 + this.clarity * 2000, 0.3);
+      this.noiseFilter.frequency.rampTo(600 + this.clarity * 1200, 0.5);
     }
+    // Pad filter opens for brighter tone
     if (this.padFilter) {
-      this.padFilter.frequency.rampTo(config.filterFreq * (0.5 + this.clarity * 0.5), 0.3);
+      this.padFilter.frequency.rampTo(300 + config.filterFreq * this.clarity * 0.4, 0.5);
     }
+    // Less detune = more focused tone
     if (this.padSynth) {
-      this.padSynth.set({ detune: config.padDetune * (1 - this.clarity * 0.9) });
+      this.padSynth.set({ detune: config.padDetune * (1 - this.clarity * 0.95) });
     }
+    // Slightly drier at high clarity
     if (this.reverb) {
-      this.reverb.wet.rampTo(0.5 - this.clarity * 0.3, 0.3);
+      this.reverb.wet.rampTo(0.6 - this.clarity * 0.2, 0.5);
     }
   }
 
@@ -209,20 +224,32 @@ class SoundEngine {
   playSprayClick(x: number, y: number): void {
     if (!this.isInitialized) return;
     const config = SCENT_CONFIGS[this.currentScent];
+    
+    // Gentler pitch mapping - higher register, softer
     const scaleIndex = Math.floor(x * SPRAY_SCALE.length);
     const interval = SPRAY_SCALE[Math.min(scaleIndex, SPRAY_SCALE.length - 1)];
-    const freq = config.sparkleFreqRange[0] * Math.pow(2, interval / 12);
-    const brightness = 2000 + (1 - y) * 4000;
+    const baseFreq = config.sparkleFreqRange[0] * 1.5; // Higher base
+    const freq = baseFreq * Math.pow(2, interval / 12) + (Math.random() - 0.5) * 15;
+    
+    // Y affects brightness subtly
+    const brightness = 2500 + (1 - y) * 2000;
 
     if (this.sparkleFilter) this.sparkleFilter.frequency.value = brightness;
+    
     if (this.spraySynth) {
-      this.spraySynth.set({ envelope: { attack: config.sparkleAttack * (0.8 + Math.random() * 0.4), decay: config.sparkleDecay } });
-      this.spraySynth.triggerAttackRelease(freq + (Math.random() - 0.5) * 20, config.sparkleDecay * (0.8 + this.sprayStrength * 0.4));
+      const attack = config.sparkleAttack * (1.2 + Math.random() * 0.5);
+      const decay = config.sparkleDecay * (1 + this.sprayStrength * 0.3);
+      this.spraySynth.set({ 
+        envelope: { attack, decay, sustain: 0, release: decay * 1.5 }
+      });
+      this.spraySynth.triggerAttackRelease(freq, decay);
     }
+    
+    // Very subtle sparkle burst
     if (this.sparkleGain) {
-      const burstLevel = 0.08 + this.sprayStrength * 0.1;
+      const burstLevel = 0.02 + this.sprayStrength * 0.03;
       this.sparkleGain.gain.setValueAtTime(burstLevel, Tone.now());
-      this.sparkleGain.gain.exponentialRampToValueAtTime(0.001, Tone.now() + 0.15);
+      this.sparkleGain.gain.exponentialRampToValueAtTime(0.001, Tone.now() + 0.2);
     }
   }
 
