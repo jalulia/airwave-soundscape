@@ -8,55 +8,69 @@ export type ScentVariant =
 
 interface ScentConfig {
   baseFreq: number;
-  harmonicRatios: number[];
+  chordNotes: number[]; // Semitones from base for the chord
   filterFreq: number;
   filterQ: number;
   reverbDecay: number;
   padDetune: number;
   sparkleFreqRange: [number, number];
   chorusDepth: number;
+  oscillatorType: 'sine' | 'triangle';
+  character: 'airy' | 'warm' | 'bright' | 'deep';
 }
 
 const SCENT_CONFIGS: Record<ScentVariant, ScentConfig> = {
+  // Mandarin-Cedarwood: Warm, grounded major 7th chord
   'mandarin-cedarwood': {
-    baseFreq: 220,
-    harmonicRatios: [1, 1.5, 2],
-    filterFreq: 1200,
-    filterQ: 0.8,
-    reverbDecay: 3,
-    padDetune: 6,
-    sparkleFreqRange: [800, 1400],
-    chorusDepth: 0.25,
-  },
-  'eucalyptus-hinoki': {
-    baseFreq: 260,
-    harmonicRatios: [1, 2, 3],
-    filterFreq: 1600,
+    baseFreq: 196, // G3
+    chordNotes: [0, 4, 7, 11], // Gmaj7
+    filterFreq: 1000,
     filterQ: 0.6,
     reverbDecay: 3.5,
+    padDetune: 4,
+    sparkleFreqRange: [700, 1200],
+    chorusDepth: 0.3,
+    oscillatorType: 'sine',
+    character: 'warm',
+  },
+  // Eucalyptus-Hinoki: Very airy and twinkly, high ethereal
+  'eucalyptus-hinoki': {
+    baseFreq: 330, // E4 - higher register
+    chordNotes: [0, 7, 12, 19], // Open fifths, very airy
+    filterFreq: 2200,
+    filterQ: 0.3,
+    reverbDecay: 5,
+    padDetune: 1,
+    sparkleFreqRange: [1400, 2400],
+    chorusDepth: 0.15,
+    oscillatorType: 'triangle',
+    character: 'airy',
+  },
+  // Bergamot-Amber: Bright, uplifting add9 chord
+  'bergamot-amber': {
+    baseFreq: 261, // C4
+    chordNotes: [0, 4, 7, 14], // Cadd9
+    filterFreq: 1600,
+    filterQ: 0.5,
+    reverbDecay: 3,
     padDetune: 3,
     sparkleFreqRange: [1000, 1800],
-    chorusDepth: 0.18,
+    chorusDepth: 0.25,
+    oscillatorType: 'triangle',
+    character: 'bright',
   },
-  'bergamot-amber': {
-    baseFreq: 196,
-    harmonicRatios: [1, 1.25, 2],
-    filterFreq: 1400,
-    filterQ: 0.7,
-    reverbDecay: 4,
-    padDetune: 5,
-    sparkleFreqRange: [900, 1600],
-    chorusDepth: 0.35,
-  },
+  // Blacktea-Palo: Deep, contemplative minor 7th
   'blacktea-palo': {
-    baseFreq: 174,
-    harmonicRatios: [1, 1.5, 2],
-    filterFreq: 1000,
-    filterQ: 1.0,
-    reverbDecay: 4.5,
-    padDetune: 8,
-    sparkleFreqRange: [600, 1100],
-    chorusDepth: 0.3,
+    baseFreq: 146, // D3 - lower register
+    chordNotes: [0, 3, 7, 10], // Dm7
+    filterFreq: 800,
+    filterQ: 0.8,
+    reverbDecay: 5,
+    padDetune: 6,
+    sparkleFreqRange: [500, 900],
+    chorusDepth: 0.4,
+    oscillatorType: 'sine',
+    character: 'deep',
   },
 };
 
@@ -136,9 +150,27 @@ class SoundEngine {
   applyScent(scent: ScentVariant): void {
     this.currentScent = scent;
     const config = SCENT_CONFIGS[scent];
+    
+    // Update pad oscillator type for character
+    if (this.padSynth) {
+      this.padSynth.set({ oscillator: { type: config.oscillatorType } });
+    }
+    
     if (this.padFilter) this.padFilter.Q.value = config.filterQ;
     if (this.reverb) this.reverb.decay = config.reverbDecay;
     if (this.chorus) this.chorus.depth = config.chorusDepth;
+    
+    // Crossfade to new chord
+    if (this.padSynth && this.isInitialized) {
+      this.padSynth.releaseAll();
+      setTimeout(() => {
+        const notes = config.chordNotes.map(semitone => 
+          Tone.Frequency(config.baseFreq * Math.pow(2, semitone / 12)).toNote()
+        );
+        this.padSynth?.triggerAttack(notes);
+      }, 200);
+    }
+    
     this.updateFocus(this.focus);
   }
 
@@ -179,7 +211,9 @@ class SoundEngine {
     if (!this.isInitialized) return;
     const config = SCENT_CONFIGS[this.currentScent];
     if (this.padSynth) {
-      const notes = config.harmonicRatios.map(r => Tone.Frequency(config.baseFreq * r).toNote());
+      const notes = config.chordNotes.map(semitone => 
+        Tone.Frequency(config.baseFreq * Math.pow(2, semitone / 12)).toNote()
+      );
       this.padSynth.triggerAttack(notes);
     }
   }
