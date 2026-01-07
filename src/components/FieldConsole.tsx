@@ -5,15 +5,13 @@ import { ScentSelector } from './ScentSelector';
 import { FocusDial } from './FocusDial';
 import { FloatingNoteIndicator } from './FloatingNoteIndicator';
 import { NoteTrack } from './NoteTrack';
-import { Slider } from '@/components/ui/slider';
 
 interface FieldConsoleProps {
   scent: ScentVariant;
   onScentChange: (scent: ScentVariant) => void;
   focus: number;
   onFocusChange: (value: number) => void;
-  sprayStrength: number;
-  onSprayStrengthChange: (value: number) => void;
+  onFocusChangeEnd?: () => void;
   floatingNoteCount: number;
   tracks: Record<ScentVariant, ScentTrack>;
   onToggleTrackLoop: (scent: ScentVariant) => void;
@@ -33,8 +31,7 @@ export function FieldConsole({
   onScentChange,
   focus,
   onFocusChange,
-  sprayStrength,
-  onSprayStrengthChange,
+  onFocusChangeEnd,
   floatingNoteCount,
   tracks,
   onToggleTrackLoop,
@@ -61,35 +58,16 @@ export function FieldConsole({
 
       <div className="h-px bg-border/40" />
 
-      {/* Section: Tools */}
+      {/* Section: Focus Control */}
       <section>
-        <h3 className="control-label mb-3">Tools</h3>
-        
-        <div className="flex justify-center mb-4">
+        <div className="flex justify-center">
           <FocusDial
             value={focus}
             onChange={onFocusChange}
+            onChangeEnd={onFocusChangeEnd}
             size="lg"
             label="FOCUS"
           />
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <span className="text-xs text-muted-foreground uppercase tracking-wider">
-            Spray Strength
-          </span>
-          <Slider
-            value={[sprayStrength * 100]}
-            onValueChange={(vals) => onSprayStrengthChange(vals[0] / 100)}
-            min={0}
-            max={100}
-            step={1}
-            className="w-full"
-          />
-          <div className="flex justify-between text-[10px] text-muted-foreground">
-            <span>Soft</span>
-            <span>Strong</span>
-          </div>
         </div>
       </section>
 
@@ -107,9 +85,9 @@ export function FieldConsole({
 
       {/* Section: Scent Tracks */}
       <section className="flex-1 min-h-0">
-        <h3 className="control-label mb-2">Tracks</h3>
+        <h3 className="control-label mb-2">Loops</h3>
         <p className="text-[10px] text-muted-foreground mb-3">
-          Each scent has its own loop
+          Each scent saves its own loop
         </p>
         <div className="space-y-2">
           {scents.map(s => (

@@ -7,6 +7,7 @@ import { FieldConsole } from '@/components/FieldConsole';
 
 export default function Index() {
   const state = useSoundscapeState();
+  const prevPlayingTracksRef = useRef<Record<string, boolean>>({});
 
   useEffect(() => {
     soundEngine.initialize();
@@ -17,14 +18,37 @@ export default function Index() {
     soundEngine.applyScent(state.scent);
   }, [state.scent]);
 
+  // Focus affects the audio
   useEffect(() => {
-    const effectiveClarity = state.clarity * (0.6 + state.focus * 0.4);
-    soundEngine.updateClarity(effectiveClarity);
-  }, [state.clarity, state.focus]);
+    soundEngine.updateFocus(state.focus);
+  }, [state.focus]);
 
+  // Note count affects ambient bed richness
   useEffect(() => {
-    soundEngine.setSprayStrength(state.sprayStrength);
-  }, [state.sprayStrength]);
+    const totalNotes = Object.values(state.tracks).reduce(
+      (sum, track) => sum + track.notes.length, 0
+    );
+    soundEngine.setNoteCount(totalNotes);
+  }, [state.tracks]);
+
+  // Handle track loop playback
+  useEffect(() => {
+    Object.values(state.tracks).forEach(track => {
+      const wasPlaying = prevPlayingTracksRef.current[track.scent];
+      const isPlaying = track.isPlaying && track.notes.length > 0;
+      
+      if (isPlaying && !wasPlaying) {
+        soundEngine.startLoop(
+          track.notes.map(n => ({ x: n.x, y: n.y })),
+          track.scent
+        );
+      } else if (!isPlaying && wasPlaying) {
+        soundEngine.stopLoop();
+      }
+      
+      prevPlayingTracksRef.current[track.scent] = isPlaying;
+    });
+  }, [state.tracks]);
 
   const toggleAudio = useCallback(async () => {
     if (state.isAudioStarted) {
@@ -53,11 +77,18 @@ export default function Index() {
 
   const handleCaptureNote = useCallback(
     (noteId: string) => {
+      const note = state.floatingNotes.find(n => n.id === noteId);
+      if (note) {
+        soundEngine.playNoteCapture(note.x, note.y);
+      }
       state.captureNote(noteId);
-      soundEngine.playGlimmerCapture();
     },
-    [state.captureNote]
+    [state.floatingNotes, state.captureNote]
   );
+
+  const handleFocusChangeEnd = useCallback(() => {
+    soundEngine.playFocusChange(state.focus);
+  }, [state.focus]);
 
   // Map mode for StatusBar
   const statusMode = state.mode === 'looping' ? 'stable' 
@@ -80,8 +111,7 @@ export default function Index() {
             onScentChange={state.setScent}
             focus={state.focus}
             onFocusChange={state.setFocus}
-            sprayStrength={state.sprayStrength}
-            onSprayStrengthChange={state.setSprayStrength}
+            onFocusChangeEnd={handleFocusChangeEnd}
             floatingNoteCount={state.floatingNotes.length}
             tracks={state.tracks}
             onToggleTrackLoop={state.toggleTrackLoop}
@@ -93,6 +123,7 @@ export default function Index() {
         <div className="flex-1 glass-panel p-2 relative">
           <Visualizer
             clarity={state.clarity}
+            focus={state.focus}
             scent={state.scent}
             mode={state.mode}
             floatingNotes={state.floatingNotes}

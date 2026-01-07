@@ -3,6 +3,7 @@ import React, { useRef, useState, useEffect, useCallback } from 'react';
 interface FocusDialProps {
   value: number;
   onChange: (value: number) => void;
+  onChangeEnd?: () => void;
   size?: 'sm' | 'md' | 'lg';
   label?: string;
 }
@@ -10,18 +11,17 @@ interface FocusDialProps {
 const SIZES = {
   sm: { outer: 80, inner: 60 },
   md: { outer: 100, inner: 76 },
-  lg: { outer: 140, inner: 110 },
+  lg: { outer: 130, inner: 100 },
 };
 
-export function FocusDial({ value, onChange, size = 'lg', label }: FocusDialProps) {
+export function FocusDial({ value, onChange, onChangeEnd, size = 'lg', label }: FocusDialProps) {
   const dialRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   const { outer, inner } = SIZES[size];
   const rotation = value * 270 - 135;
 
-  const handleStart = useCallback((clientX: number, clientY: number) => {
-    if (!dialRef.current) return;
+  const handleStart = useCallback(() => {
     setIsDragging(true);
   }, []);
 
@@ -45,8 +45,11 @@ export function FocusDial({ value, onChange, size = 'lg', label }: FocusDialProp
   );
 
   const handleEnd = useCallback(() => {
-    setIsDragging(false);
-  }, []);
+    if (isDragging) {
+      setIsDragging(false);
+      onChangeEnd?.();
+    }
+  }, [isDragging, onChangeEnd]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => handleMove(e.clientX, e.clientY);
@@ -73,19 +76,32 @@ export function FocusDial({ value, onChange, size = 'lg', label }: FocusDialProp
     };
   }, [isDragging, handleMove, handleEnd]);
 
+  // Visual feedback based on focus level
+  const glowIntensity = value * 0.4;
+  const arcColor = value > 0.7 ? 'hsl(var(--airwave-teal))' : 
+                   value > 0.3 ? 'hsl(180 40% 55%)' : 
+                   'hsl(180 20% 60%)';
+
   return (
-    <div className="flex flex-col items-center gap-3">
-      {label && <span className="control-label">{label}</span>}
+    <div className="flex flex-col items-center gap-2">
+      {label && (
+        <div className="flex items-center gap-2">
+          <span className="control-label">{label}</span>
+          <span className="text-[10px] text-muted-foreground">
+            {value < 0.3 ? 'Hazy' : value < 0.7 ? 'Clearing' : 'Sharp'}
+          </span>
+        </div>
+      )}
       <div
         ref={dialRef}
-        className="dial-track relative cursor-pointer select-none"
-        style={{ width: outer, height: outer }}
-        onMouseDown={(e) => handleStart(e.clientX, e.clientY)}
-        onTouchStart={(e) => {
-          if (e.touches[0]) {
-            handleStart(e.touches[0].clientX, e.touches[0].clientY);
-          }
+        className="dial-track relative cursor-pointer select-none transition-shadow duration-300"
+        style={{ 
+          width: outer, 
+          height: outer,
+          boxShadow: isDragging ? `0 0 ${20 + value * 20}px hsla(180, 50%, 50%, ${glowIntensity})` : undefined,
         }}
+        onMouseDown={handleStart}
+        onTouchStart={handleStart}
       >
         {/* Background ring with tick marks */}
         <svg
@@ -93,13 +109,14 @@ export function FocusDial({ value, onChange, size = 'lg', label }: FocusDialProp
           viewBox={`0 0 ${outer} ${outer}`}
           style={{ transform: 'rotate(-135deg)' }}
         >
-          {/* Tick marks */}
-          {Array.from({ length: 27 }, (_, i) => {
-            const angle = (i / 26) * 270;
+          {/* Tick marks - brighter as value increases */}
+          {Array.from({ length: 21 }, (_, i) => {
+            const angle = (i / 20) * 270;
             const radians = (angle * Math.PI) / 180;
-            const isMain = i % 9 === 0;
-            const innerRadius = outer / 2 - (isMain ? 14 : 10);
-            const outerRadius = outer / 2 - 6;
+            const isMain = i % 5 === 0;
+            const isActive = (i / 20) <= value;
+            const innerRadius = outer / 2 - (isMain ? 12 : 8);
+            const outerRadius = outer / 2 - 4;
 
             return (
               <line
@@ -108,26 +125,30 @@ export function FocusDial({ value, onChange, size = 'lg', label }: FocusDialProp
                 y1={outer / 2 + Math.sin(radians) * innerRadius}
                 x2={outer / 2 + Math.cos(radians) * outerRadius}
                 y2={outer / 2 + Math.sin(radians) * outerRadius}
-                stroke="currentColor"
+                stroke={isActive ? arcColor : 'currentColor'}
                 strokeWidth={isMain ? 2 : 1}
-                className="text-muted-foreground/40"
+                className={isActive ? '' : 'text-muted-foreground/30'}
+                style={{
+                  transition: 'stroke 0.15s ease',
+                }}
               />
             );
           })}
 
           {/* Value arc */}
           <path
-            d={describeArc(outer / 2, outer / 2, outer / 2 - 10, 0, value * 270)}
+            d={describeArc(outer / 2, outer / 2, outer / 2 - 8, 0, value * 270)}
             fill="none"
-            stroke="hsl(var(--airwave-teal))"
+            stroke={arcColor}
             strokeWidth="3"
             strokeLinecap="round"
+            style={{ transition: 'stroke 0.15s ease' }}
           />
         </svg>
 
         {/* Inner dial knob */}
         <div
-          className="dial-knob absolute"
+          className={`dial-knob absolute transition-transform ${isDragging ? 'scale-105' : ''}`}
           style={{
             width: inner,
             height: inner,
@@ -138,26 +159,33 @@ export function FocusDial({ value, onChange, size = 'lg', label }: FocusDialProp
         >
           {/* Indicator line */}
           <div
-            className="absolute bg-foreground/70 rounded-full"
+            className="absolute rounded-full transition-colors"
             style={{
               width: 3,
               height: inner / 3,
               left: '50%',
-              top: '8%',
+              top: '10%',
               transform: 'translateX(-50%)',
+              backgroundColor: arcColor,
             }}
           />
         </div>
 
         {/* Center value display */}
-        <div
-          className="absolute inset-0 flex items-center justify-center pointer-events-none"
-        >
-          <span className="text-lg font-medium tabular-nums text-foreground/80">
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <span 
+            className="text-lg font-medium tabular-nums transition-colors"
+            style={{ color: arcColor }}
+          >
             {(value * 100).toFixed(0)}
           </span>
         </div>
       </div>
+      
+      {/* Helper text */}
+      <p className="text-[10px] text-muted-foreground text-center max-w-[120px]">
+        Higher focus reveals more notes & brightens the sound
+      </p>
     </div>
   );
 }
