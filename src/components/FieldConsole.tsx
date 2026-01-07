@@ -1,13 +1,11 @@
 import React from 'react';
 import { ScentVariant } from '@/audio/SoundEngine';
-import { Moment } from '@/hooks/useSoundscapeState';
+import { ScentTrack } from '@/hooks/useSoundscapeState';
 import { ScentSelector } from './ScentSelector';
 import { FocusDial } from './FocusDial';
-import { GlimmerIndicator } from './GlimmerIndicator';
-import { MomentsList } from './MomentsList';
+import { FloatingNoteIndicator } from './FloatingNoteIndicator';
+import { NoteTrack } from './NoteTrack';
 import { Slider } from '@/components/ui/slider';
-import { Button } from '@/components/ui/button';
-import { Camera } from 'lucide-react';
 
 interface FieldConsoleProps {
   scent: ScentVariant;
@@ -16,12 +14,11 @@ interface FieldConsoleProps {
   onFocusChange: (value: number) => void;
   sprayStrength: number;
   onSprayStrengthChange: (value: number) => void;
-  glimmersCollected: number;
-  isLocked: boolean;
-  onCaptureMoment: () => void;
-  moments: Moment[];
-  onRenameMoment: (id: string, name: string) => void;
-  onDeleteMoment: (id: string) => void;
+  floatingNoteCount: number;
+  tracks: Record<ScentVariant, ScentTrack>;
+  onToggleTrackLoop: (scent: ScentVariant) => void;
+  onClearTrack: (scent: ScentVariant) => void;
+  onDeleteNote: (scent: ScentVariant, noteId: string) => void;
 }
 
 const SCENT_DESCRIPTIONS: Record<ScentVariant, string> = {
@@ -38,31 +35,37 @@ export function FieldConsole({
   onFocusChange,
   sprayStrength,
   onSprayStrengthChange,
-  glimmersCollected,
-  isLocked,
-  onCaptureMoment,
-  moments,
-  onRenameMoment,
-  onDeleteMoment,
+  floatingNoteCount,
+  tracks,
+  onToggleTrackLoop,
+  onClearTrack,
+  onDeleteNote,
 }: FieldConsoleProps) {
+  const scents: ScentVariant[] = [
+    'mandarin-cedarwood',
+    'eucalyptus-hinoki',
+    'bergamot-amber',
+    'blacktea-palo',
+  ];
+
   return (
-    <div className="glass-panel h-full flex flex-col gap-5 p-5 overflow-y-auto">
+    <div className="glass-panel h-full flex flex-col gap-4 p-4 overflow-y-auto">
       {/* Section: Scent Profile */}
       <section>
-        <h3 className="control-label mb-3">Scent Profile</h3>
+        <h3 className="control-label mb-2">Scent Profile</h3>
         <ScentSelector value={scent} onChange={onScentChange} />
         <p className="text-xs text-muted-foreground mt-2 italic">
           {SCENT_DESCRIPTIONS[scent]}
         </p>
       </section>
 
-      <div className="h-px bg-border/50" />
+      <div className="h-px bg-border/40" />
 
       {/* Section: Tools */}
       <section>
-        <h3 className="control-label mb-4">Tools</h3>
+        <h3 className="control-label mb-3">Tools</h3>
         
-        <div className="flex justify-center mb-5">
+        <div className="flex justify-center mb-4">
           <FocusDial
             value={focus}
             onChange={onFocusChange}
@@ -71,54 +74,55 @@ export function FieldConsole({
           />
         </div>
 
-        <div className="space-y-4">
-          <div className="flex flex-col gap-2">
-            <span className="text-xs text-muted-foreground uppercase tracking-wider">
-              Spray Strength
-            </span>
-            <Slider
-              value={[sprayStrength * 100]}
-              onValueChange={(vals) => onSprayStrengthChange(vals[0] / 100)}
-              min={0}
-              max={100}
-              step={1}
-              className="w-full"
-            />
-            <div className="flex justify-between text-[10px] text-muted-foreground">
-              <span>Soft</span>
-              <span>Strong</span>
-            </div>
+        <div className="flex flex-col gap-2">
+          <span className="text-xs text-muted-foreground uppercase tracking-wider">
+            Spray Strength
+          </span>
+          <Slider
+            value={[sprayStrength * 100]}
+            onValueChange={(vals) => onSprayStrengthChange(vals[0] / 100)}
+            min={0}
+            max={100}
+            step={1}
+            className="w-full"
+          />
+          <div className="flex justify-between text-[10px] text-muted-foreground">
+            <span>Soft</span>
+            <span>Strong</span>
           </div>
         </div>
       </section>
 
-      <div className="h-px bg-border/50" />
+      <div className="h-px bg-border/40" />
 
-      {/* Section: Glimmer Capture */}
+      {/* Section: Notes in Field */}
       <section>
-        <GlimmerIndicator collected={glimmersCollected} />
-        
-        <Button
-          className="w-full mt-3"
-          variant={isLocked ? 'default' : 'outline'}
-          disabled={!isLocked}
-          onClick={onCaptureMoment}
-        >
-          <Camera className="h-4 w-4 mr-2" />
-          Capture Moment
-        </Button>
+        <FloatingNoteIndicator count={floatingNoteCount} />
+        <p className="text-[10px] text-muted-foreground mt-1">
+          Click floating notes to capture them
+        </p>
       </section>
 
-      <div className="h-px bg-border/50" />
+      <div className="h-px bg-border/40" />
 
-      {/* Section: Moments */}
+      {/* Section: Scent Tracks */}
       <section className="flex-1 min-h-0">
-        <h3 className="control-label mb-3">Moments</h3>
-        <MomentsList
-          moments={moments}
-          onRename={onRenameMoment}
-          onDelete={onDeleteMoment}
-        />
+        <h3 className="control-label mb-2">Tracks</h3>
+        <p className="text-[10px] text-muted-foreground mb-3">
+          Each scent has its own loop
+        </p>
+        <div className="space-y-2">
+          {scents.map(s => (
+            <NoteTrack
+              key={s}
+              track={tracks[s]}
+              isCurrentScent={s === scent}
+              onToggleLoop={() => onToggleTrackLoop(s)}
+              onClear={() => onClearTrack(s)}
+              onDeleteNote={(noteId) => onDeleteNote(s, noteId)}
+            />
+          ))}
+        </div>
       </section>
     </div>
   );

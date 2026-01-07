@@ -1,16 +1,21 @@
 import { useState, useCallback, useEffect } from 'react';
 import { ScentVariant } from '@/audio/SoundEngine';
 
-export interface Moment {
+export interface Note {
   id: string;
   timestamp: number;
-  name: string;
+  x: number;
+  y: number;
   scent: ScentVariant;
-  clarity: number;
-  glimmersCollected: number;
 }
 
-export interface Glimmer {
+export interface ScentTrack {
+  scent: ScentVariant;
+  notes: Note[];
+  isPlaying: boolean;
+}
+
+export interface FloatingNote {
   id: string;
   x: number;
   y: number;
@@ -22,104 +27,106 @@ interface SoundscapeState {
   focus: number;
   sprayStrength: number;
   scent: ScentVariant;
-  mode: 'neutralizing' | 'locking' | 'stable';
+  mode: 'exploring' | 'collecting' | 'looping';
   isAudioStarted: boolean;
-  glimmersCollected: number;
-  isLocked: boolean;
-  moments: Moment[];
-  activeGlimmers: Glimmer[];
+  tracks: Record<ScentVariant, ScentTrack>;
+  floatingNotes: FloatingNote[];
 }
 
-const STORAGE_KEY = 'airwave-soundscape-moments';
-const GLIMMER_LIFETIME = 5000; // 5 seconds
+const STORAGE_KEY = 'airwave-soundscape-tracks';
+const NOTE_LIFETIME = 6000;
 
-function loadMoments(): Moment[] {
+function loadTracks(): Record<ScentVariant, ScentTrack> {
+  const defaultTracks: Record<ScentVariant, ScentTrack> = {
+    'mandarin-cedarwood': { scent: 'mandarin-cedarwood', notes: [], isPlaying: false },
+    'eucalyptus-hinoki': { scent: 'eucalyptus-hinoki', notes: [], isPlaying: false },
+    'bergamot-amber': { scent: 'bergamot-amber', notes: [], isPlaying: false },
+    'blacktea-palo': { scent: 'blacktea-palo', notes: [], isPlaying: false },
+  };
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    return stored ? JSON.parse(stored) : [];
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      return { ...defaultTracks, ...parsed };
+    }
+    return defaultTracks;
   } catch {
-    return [];
+    return defaultTracks;
   }
 }
 
-function saveMoments(moments: Moment[]) {
+function saveTracks(tracks: Record<ScentVariant, ScentTrack>) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(moments));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(tracks));
   } catch {
-    console.warn('Failed to save moments to localStorage');
+    console.warn('Failed to save tracks');
   }
 }
 
 export function useSoundscapeState() {
   const [state, setState] = useState<SoundscapeState>({
     clarity: 0.15,
-    focus: 0.3,
+    focus: 0.5,
     sprayStrength: 0.5,
     scent: 'eucalyptus-hinoki',
-    mode: 'neutralizing',
+    mode: 'exploring',
     isAudioStarted: false,
-    glimmersCollected: 0,
-    isLocked: false,
-    moments: loadMoments(),
-    activeGlimmers: [],
+    tracks: loadTracks(),
+    floatingNotes: [],
   });
 
-  // Update mode based on clarity and glimmers
+  // Spawn floating notes when clarity is decent
   useEffect(() => {
-    if (state.isLocked) {
-      if (state.mode !== 'stable') {
-        setState(s => ({ ...s, mode: 'stable' }));
-      }
-    } else if (state.glimmersCollected >= 3) {
-      // Trigger lock
-      setState(s => ({ ...s, isLocked: true, mode: 'stable' }));
-    } else if (state.clarity >= 0.6) {
-      if (state.mode !== 'locking') {
-        setState(s => ({ ...s, mode: 'locking' }));
-      }
-    } else {
-      if (state.mode !== 'neutralizing') {
-        setState(s => ({ ...s, mode: 'neutralizing', glimmersCollected: 0, isLocked: false }));
-      }
-    }
-  }, [state.clarity, state.glimmersCollected, state.isLocked, state.mode]);
-
-  // Spawn glimmers when in locking mode
-  useEffect(() => {
-    if (state.mode !== 'locking' || state.isLocked) return;
-
+    if (!state.isAudioStarted) return;
+    
     const spawnInterval = setInterval(() => {
-      if (state.activeGlimmers.length < 3) {
-        const newGlimmer: Glimmer = {
-          id: `glimmer-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          x: 0.2 + Math.random() * 0.6,
-          y: 0.2 + Math.random() * 0.6,
+      if (state.floatingNotes.length < 4 && state.clarity > 0.3) {
+        const newNote: FloatingNote = {
+          id: `note-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+          x: 0.15 + Math.random() * 0.7,
+          y: 0.15 + Math.random() * 0.7,
           spawnTime: Date.now(),
         };
         setState(s => ({
           ...s,
-          activeGlimmers: [...s.activeGlimmers, newGlimmer],
+          floatingNotes: [...s.floatingNotes, newNote],
         }));
       }
-    }, 2000);
+    }, 2500);
 
     return () => clearInterval(spawnInterval);
-  }, [state.mode, state.isLocked, state.activeGlimmers.length]);
+  }, [state.isAudioStarted, state.floatingNotes.length, state.clarity]);
 
-  // Remove expired glimmers
+  // Remove expired floating notes
   useEffect(() => {
     const cleanupInterval = setInterval(() => {
       const now = Date.now();
       setState(s => ({
         ...s,
-        activeGlimmers: s.activeGlimmers.filter(
-          g => now - g.spawnTime < GLIMMER_LIFETIME
-        ),
+        floatingNotes: s.floatingNotes.filter(n => now - n.spawnTime < NOTE_LIFETIME),
       }));
     }, 500);
 
     return () => clearInterval(cleanupInterval);
   }, []);
+
+  // Update mode based on track state
+  useEffect(() => {
+    const currentTrack = state.tracks[state.scent];
+    if (currentTrack.isPlaying && currentTrack.notes.length > 0) {
+      if (state.mode !== 'looping') {
+        setState(s => ({ ...s, mode: 'looping' }));
+      }
+    } else if (currentTrack.notes.length > 0) {
+      if (state.mode !== 'collecting') {
+        setState(s => ({ ...s, mode: 'collecting' }));
+      }
+    } else {
+      if (state.mode !== 'exploring') {
+        setState(s => ({ ...s, mode: 'exploring' }));
+      }
+    }
+  }, [state.tracks, state.scent, state.mode]);
 
   const setClarity = useCallback((value: number) => {
     setState(s => ({ ...s, clarity: Math.max(0, Math.min(1, value)) }));
@@ -141,105 +148,103 @@ export function useSoundscapeState() {
     setState(s => ({ ...s, isAudioStarted: started }));
   }, []);
 
-  const incrementClarity = useCallback((amount: number = 0.02) => {
+  const incrementClarity = useCallback((amount: number = 0.025) => {
     setState(s => ({
       ...s,
       clarity: Math.min(1, s.clarity + amount * (0.5 + s.focus * 0.5)),
     }));
   }, []);
 
-  const captureGlimmer = useCallback((glimmerId: string) => {
+  // Capture a floating note - adds it to the current scent's track
+  const captureNote = useCallback((noteId: string) => {
     setState(s => {
-      const glimmer = s.activeGlimmers.find(g => g.id === glimmerId);
-      if (!glimmer) return s;
+      const floatingNote = s.floatingNotes.find(n => n.id === noteId);
+      if (!floatingNote) return s;
+
+      const newNote: Note = {
+        id: `captured-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        timestamp: Date.now(),
+        x: floatingNote.x,
+        y: floatingNote.y,
+        scent: s.scent,
+      };
+
+      const updatedTracks = {
+        ...s.tracks,
+        [s.scent]: {
+          ...s.tracks[s.scent],
+          notes: [...s.tracks[s.scent].notes, newNote],
+        },
+      };
+
+      saveTracks(updatedTracks);
 
       return {
         ...s,
-        glimmersCollected: s.glimmersCollected + 1,
-        activeGlimmers: s.activeGlimmers.filter(g => g.id !== glimmerId),
+        floatingNotes: s.floatingNotes.filter(n => n.id !== noteId),
+        tracks: updatedTracks,
       };
     });
   }, []);
 
-  const captureMoment = useCallback(() => {
-    if (!state.isLocked) return null;
-
-    const newMoment: Moment = {
-      id: `moment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      timestamp: Date.now(),
-      name: `Moment ${state.moments.length + 1}`,
-      scent: state.scent,
-      clarity: state.clarity,
-      glimmersCollected: state.glimmersCollected,
-    };
-
-    const updatedMoments = [...state.moments, newMoment];
-    saveMoments(updatedMoments);
-
-    setState(s => ({
-      ...s,
-      moments: updatedMoments,
-      // Soft reset after capture
-      glimmersCollected: 0,
-      isLocked: false,
-      clarity: Math.max(0.5, s.clarity - 0.2),
-      mode: 'neutralizing',
-    }));
-
-    return newMoment;
-  }, [state.isLocked, state.scent, state.clarity, state.glimmersCollected, state.moments]);
-
-  const renameMoment = useCallback((momentId: string, newName: string) => {
+  // Toggle loop playback for a scent track
+  const toggleTrackLoop = useCallback((scent: ScentVariant) => {
     setState(s => {
-      const updatedMoments = s.moments.map(m =>
-        m.id === momentId ? { ...m, name: newName } : m
-      );
-      saveMoments(updatedMoments);
-      return { ...s, moments: updatedMoments };
+      const updatedTracks = {
+        ...s.tracks,
+        [scent]: {
+          ...s.tracks[scent],
+          isPlaying: !s.tracks[scent].isPlaying,
+        },
+      };
+      saveTracks(updatedTracks);
+      return { ...s, tracks: updatedTracks };
     });
   }, []);
 
-  const deleteMoment = useCallback((momentId: string) => {
+  // Clear all notes from a scent track
+  const clearTrack = useCallback((scent: ScentVariant) => {
     setState(s => {
-      const updatedMoments = s.moments.filter(m => m.id !== momentId);
-      saveMoments(updatedMoments);
-      return { ...s, moments: updatedMoments };
+      const updatedTracks = {
+        ...s.tracks,
+        [scent]: {
+          ...s.tracks[scent],
+          notes: [],
+          isPlaying: false,
+        },
+      };
+      saveTracks(updatedTracks);
+      return { ...s, tracks: updatedTracks };
     });
   }, []);
 
-  const clearMoments = useCallback(() => {
-    saveMoments([]);
-    setState(s => ({ ...s, moments: [] }));
+  // Delete a single note from a track
+  const deleteNote = useCallback((scent: ScentVariant, noteId: string) => {
+    setState(s => {
+      const updatedTracks = {
+        ...s.tracks,
+        [scent]: {
+          ...s.tracks[scent],
+          notes: s.tracks[scent].notes.filter(n => n.id !== noteId),
+        },
+      };
+      saveTracks(updatedTracks);
+      return { ...s, tracks: updatedTracks };
+    });
   }, []);
-
-  // Anti-drift: maintain stability in stable mode
-  useEffect(() => {
-    if (state.mode !== 'stable') return;
-
-    const interval = setInterval(() => {
-      setState(s => {
-        if (s.mode !== 'stable') return s;
-        const drift = (Math.random() - 0.5) * 0.01;
-        const newClarity = Math.max(0.7, Math.min(1, s.clarity + drift * 0.3));
-        return { ...s, clarity: newClarity };
-      });
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [state.mode]);
 
   return {
     ...state,
+    currentTrack: state.tracks[state.scent],
     setClarity,
     setFocus,
     setSprayStrength,
     setScent,
     setAudioStarted,
     incrementClarity,
-    captureGlimmer,
-    captureMoment,
-    renameMoment,
-    deleteMoment,
-    clearMoments,
+    captureNote,
+    toggleTrackLoop,
+    clearTrack,
+    deleteNote,
   };
 }

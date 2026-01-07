@@ -7,7 +7,6 @@ import { FieldConsole } from '@/components/FieldConsole';
 
 export default function Index() {
   const state = useSoundscapeState();
-  const prevLockedRef = useRef(false);
 
   useEffect(() => {
     soundEngine.initialize();
@@ -18,9 +17,7 @@ export default function Index() {
     soundEngine.applyScent(state.scent);
   }, [state.scent]);
 
-  // Focus now affects clarity directly - higher focus = faster clarity gain
   useEffect(() => {
-    // Combine focus with clarity for the audio engine
     const effectiveClarity = state.clarity * (0.6 + state.focus * 0.4);
     soundEngine.updateClarity(effectiveClarity);
   }, [state.clarity, state.focus]);
@@ -28,13 +25,6 @@ export default function Index() {
   useEffect(() => {
     soundEngine.setSprayStrength(state.sprayStrength);
   }, [state.sprayStrength]);
-
-  useEffect(() => {
-    if (state.isLocked && !prevLockedRef.current) {
-      soundEngine.playLockCue();
-    }
-    prevLockedRef.current = state.isLocked;
-  }, [state.isLocked]);
 
   const toggleAudio = useCallback(async () => {
     if (state.isAudioStarted) {
@@ -61,23 +51,24 @@ export default function Index() {
     [state.isAudioStarted, state.setAudioStarted, state.incrementClarity]
   );
 
-  const handleGlimmerCapture = useCallback(
-    (glimmerId: string) => {
-      state.captureGlimmer(glimmerId);
+  const handleCaptureNote = useCallback(
+    (noteId: string) => {
+      state.captureNote(noteId);
       soundEngine.playGlimmerCapture();
     },
-    [state.captureGlimmer]
+    [state.captureNote]
   );
 
-  const handleCaptureMoment = useCallback(() => {
-    state.captureMoment();
-  }, [state.captureMoment]);
+  // Map mode for StatusBar
+  const statusMode = state.mode === 'looping' ? 'stable' 
+    : state.mode === 'collecting' ? 'locking' 
+    : 'neutralizing';
 
   return (
     <div className="h-screen w-full flex flex-col bg-gradient-to-br from-airwave-cream via-background to-airwave-sky/10">
       <StatusBar
         clarity={state.clarity}
-        mode={state.mode}
+        mode={statusMode}
         isAudioStarted={state.isAudioStarted}
         onToggleAudio={toggleAudio}
       />
@@ -91,12 +82,11 @@ export default function Index() {
             onFocusChange={state.setFocus}
             sprayStrength={state.sprayStrength}
             onSprayStrengthChange={state.setSprayStrength}
-            glimmersCollected={state.glimmersCollected}
-            isLocked={state.isLocked}
-            onCaptureMoment={handleCaptureMoment}
-            moments={state.moments}
-            onRenameMoment={state.renameMoment}
-            onDeleteMoment={state.deleteMoment}
+            floatingNoteCount={state.floatingNotes.length}
+            tracks={state.tracks}
+            onToggleTrackLoop={state.toggleTrackLoop}
+            onClearTrack={state.clearTrack}
+            onDeleteNote={state.deleteNote}
           />
         </div>
 
@@ -105,16 +95,16 @@ export default function Index() {
             clarity={state.clarity}
             scent={state.scent}
             mode={state.mode}
-            activeGlimmers={state.activeGlimmers}
+            floatingNotes={state.floatingNotes}
             onSpray={handleSpray}
-            onGlimmerCapture={handleGlimmerCapture}
+            onCaptureNote={handleCaptureNote}
           />
 
           {!state.isAudioStarted && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="glass-panel px-6 py-3 animate-fade-in">
                 <p className="text-sm text-muted-foreground">
-                  Click anywhere to spray and neutralize
+                  Click anywhere to start
                 </p>
               </div>
             </div>

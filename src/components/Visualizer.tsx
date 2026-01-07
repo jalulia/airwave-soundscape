@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { ScentVariant } from '@/audio/SoundEngine';
-import { Glimmer } from '@/hooks/useSoundscapeState';
+import { FloatingNote } from '@/hooks/useSoundscapeState';
 
 interface MistParticle {
   x: number;
@@ -24,10 +24,10 @@ interface SprayNode {
 interface VisualizerProps {
   clarity: number;
   scent: ScentVariant;
-  mode: 'neutralizing' | 'locking' | 'stable';
-  activeGlimmers: Glimmer[];
+  mode: 'exploring' | 'collecting' | 'looping';
+  floatingNotes: FloatingNote[];
   onSpray: (x: number, y: number) => void;
-  onGlimmerCapture: (glimmerId: string) => void;
+  onCaptureNote: (noteId: string) => void;
 }
 
 // Blue/teal misty color palettes per scent
@@ -62,9 +62,9 @@ export function Visualizer({
   clarity,
   scent,
   mode,
-  activeGlimmers,
+  floatingNotes,
   onSpray,
-  onGlimmerCapture,
+  onCaptureNote,
 }: VisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mistParticlesRef = useRef<MistParticle[]>([]);
@@ -110,22 +110,26 @@ export function Visualizer({
       const normalizedX = (e.clientX - rect.left) / rect.width;
       const normalizedY = (e.clientY - rect.top) / rect.height;
 
-      const clickedGlimmer = activeGlimmers.find(g => {
-        const gx = g.x * rect.width;
-        const gy = g.y * rect.height;
-        const dist = Math.sqrt(((e.clientX - rect.left) - gx) ** 2 + ((e.clientY - rect.top) - gy) ** 2);
-        return dist < 35;
+      // Check if clicking a floating note
+      const clickedNote = floatingNotes.find(note => {
+        const noteX = note.x * rect.width;
+        const noteY = note.y * rect.height;
+        const dist = Math.sqrt(
+          ((e.clientX - rect.left) - noteX) ** 2 + 
+          ((e.clientY - rect.top) - noteY) ** 2
+        );
+        return dist < 40;
       });
 
-      if (clickedGlimmer) {
-        onGlimmerCapture(clickedGlimmer.id);
+      if (clickedNote) {
+        onCaptureNote(clickedNote.id);
         return;
       }
 
       spawnSprayNode(x, y);
       onSpray(normalizedX, normalizedY);
     },
-    [activeGlimmers, onSpray, onGlimmerCapture, spawnSprayNode]
+    [floatingNotes, onSpray, onCaptureNote, spawnSprayNode]
   );
 
   useEffect(() => {
@@ -216,11 +220,11 @@ export function Visualizer({
         }
       }
 
-      // Stable mode glow
-      if (mode === 'stable') {
+      // Looping mode glow
+      if (mode === 'looping') {
         const glowGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, maxRingRadius);
-        glowGradient.addColorStop(0, 'rgba(140, 210, 200, 0.12)');
-        glowGradient.addColorStop(0.6, 'rgba(140, 210, 200, 0.04)');
+        glowGradient.addColorStop(0, 'rgba(140, 210, 200, 0.1)');
+        glowGradient.addColorStop(0.6, 'rgba(140, 210, 200, 0.03)');
         glowGradient.addColorStop(1, 'transparent');
         ctx.fillStyle = glowGradient;
         ctx.fillRect(0, 0, width, height);
@@ -279,73 +283,73 @@ export function Visualizer({
         return node.opacity > 0.04;
       });
 
-      // Layer 4: Glimmer targets - dithered sparkle dots
-      activeGlimmers.forEach(glimmer => {
-        const gx = glimmer.x * width;
-        const gy = glimmer.y * height;
-        const age = (Date.now() - glimmer.spawnTime) / 1000;
-        const pulse = Math.sin(age * 3) * 0.25 + 0.75;
-        const fadeIn = Math.min(age * 2, 1);
+      // Layer 4: Floating notes - musical note shapes with dithered halo
+      floatingNotes.forEach(note => {
+        const nx = note.x * width;
+        const ny = note.y * height;
+        const age = (Date.now() - note.spawnTime) / 1000;
+        const pulse = Math.sin(age * 2.5) * 0.2 + 0.8;
+        const fadeIn = Math.min(age * 3, 1);
+        const bob = Math.sin(age * 1.5) * 4;
 
-        // Outer dithered dot field
-        const dotCount = 24;
+        // Dithered dot halo
+        const dotCount = 16;
         for (let i = 0; i < dotCount; i++) {
-          const angle = (i / dotCount) * Math.PI * 2 + age * 0.5;
-          const dist = 12 + Math.sin(age * 2 + i) * 6 + pulse * 4;
-          const dotX = gx + Math.cos(angle) * dist;
-          const dotY = gy + Math.sin(angle) * dist;
-          const dotSize = 1.5 + Math.sin(age * 4 + i * 0.5) * 0.8;
+          const angle = (i / dotCount) * Math.PI * 2 + age * 0.3;
+          const dist = 18 + Math.sin(age * 2 + i * 0.8) * 5;
+          const dotX = nx + Math.cos(angle) * dist;
+          const dotY = ny + bob + Math.sin(angle) * dist;
+          const dotAlpha = 0.4 * fadeIn * (0.6 + Math.sin(age * 2.5 + i) * 0.4);
           
-          ctx.fillStyle = `rgba(180, 220, 255, ${0.6 * fadeIn * (0.5 + Math.sin(age * 3 + i) * 0.5)})`;
+          ctx.fillStyle = `rgba(160, 210, 240, ${dotAlpha})`;
           ctx.beginPath();
-          ctx.arc(dotX, dotY, dotSize, 0, Math.PI * 2);
+          ctx.arc(dotX, dotY, 1.5, 0, Math.PI * 2);
           ctx.fill();
         }
 
-        // Inner ring of smaller dots
-        const innerDots = 12;
-        for (let i = 0; i < innerDots; i++) {
-          const angle = (i / innerDots) * Math.PI * 2 - age * 0.8;
-          const dist = 6 + pulse * 2;
-          const dotX = gx + Math.cos(angle) * dist;
-          const dotY = gy + Math.sin(angle) * dist;
-          
-          ctx.fillStyle = `rgba(220, 245, 255, ${0.8 * fadeIn * pulse})`;
-          ctx.beginPath();
-          ctx.arc(dotX, dotY, 1.2, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        // Center bright dot
-        ctx.fillStyle = `rgba(255, 255, 255, ${0.95 * fadeIn * pulse})`;
+        // Center glow
+        const glowGrad = ctx.createRadialGradient(nx, ny + bob, 0, nx, ny + bob, 16);
+        glowGrad.addColorStop(0, `rgba(200, 235, 255, ${0.3 * pulse * fadeIn})`);
+        glowGrad.addColorStop(1, 'transparent');
+        ctx.fillStyle = glowGrad;
         ctx.beginPath();
-        ctx.arc(gx, gy, 3, 0, Math.PI * 2);
+        ctx.arc(nx, ny + bob, 16, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Musical note icon (simplified)
+        ctx.fillStyle = `rgba(255, 255, 255, ${0.9 * fadeIn * pulse})`;
+        ctx.beginPath();
+        ctx.arc(nx, ny + bob + 4, 5, 0, Math.PI * 2);
         ctx.fill();
         
-        // Soft cyan glow behind
-        const glowGradient = ctx.createRadialGradient(gx, gy, 0, gx, gy, 20);
-        glowGradient.addColorStop(0, `rgba(140, 220, 255, ${0.15 * pulse * fadeIn})`);
-        glowGradient.addColorStop(1, 'transparent');
-        ctx.fillStyle = glowGradient;
+        ctx.strokeStyle = `rgba(255, 255, 255, ${0.9 * fadeIn * pulse})`;
+        ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.arc(gx, gy, 20, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.moveTo(nx + 5, ny + bob + 4);
+        ctx.lineTo(nx + 5, ny + bob - 10);
+        ctx.stroke();
+
+        // Flag on note
+        ctx.beginPath();
+        ctx.moveTo(nx + 5, ny + bob - 10);
+        ctx.quadraticCurveTo(nx + 12, ny + bob - 6, nx + 5, ny + bob - 2);
+        ctx.stroke();
       });
 
       // Subtle grid
-      ctx.strokeStyle = 'rgba(140, 180, 200, 0.04)';
+      ctx.strokeStyle = 'rgba(140, 180, 200, 0.03)';
       ctx.lineWidth = 1;
       const gridSize = 50;
-      for (let x = 0; x < width; x += gridSize) {
+      for (let gx = 0; gx < width; gx += gridSize) {
         ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, height);
+        ctx.moveTo(gx, 0);
+        ctx.lineTo(gx, height);
         ctx.stroke();
       }
-      for (let y = 0; y < height; y += gridSize) {
+      for (let gy = 0; gy < height; gy += gridSize) {
         ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(width, y);
+        ctx.moveTo(0, gy);
+        ctx.lineTo(width, gy);
         ctx.stroke();
       }
 
@@ -358,7 +362,7 @@ export function Visualizer({
       window.removeEventListener('resize', resizeCanvas);
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [clarity, scent, mode, activeGlimmers]);
+  }, [clarity, scent, mode, floatingNotes]);
 
   return (
     <canvas
