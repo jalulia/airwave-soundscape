@@ -1,272 +1,272 @@
 import * as Tone from 'tone';
 
-export type ScentVariant = 'mandarin-cedarwood' | 'eucalyptus-hinoki' | 'bergamot-amber' | 'blacktea-palo';
+export type ScentVariant = 
+  | 'mandarin-cedarwood' 
+  | 'eucalyptus-hinoki' 
+  | 'bergamot-amber' 
+  | 'blacktea-palo';
 
 interface ScentConfig {
   baseFreq: number;
   harmonicRatios: number[];
-  filterBase: number;
+  filterFreq: number;
+  filterQ: number;
   noiseColor: 'white' | 'pink' | 'brown';
   reverbDecay: number;
-  warmth: number;
+  padDetune: number;
+  sparkleFreqRange: [number, number];
+  sparkleAttack: number;
+  sparkleDecay: number;
+  chorusDepth: number;
 }
 
 const SCENT_CONFIGS: Record<ScentVariant, ScentConfig> = {
   'mandarin-cedarwood': {
     baseFreq: 220,
-    harmonicRatios: [1, 1.5, 2, 2.5],
-    filterBase: 800,
+    harmonicRatios: [1, 1.5, 2, 3],
+    filterFreq: 1800,
+    filterQ: 1.2,
     noiseColor: 'pink',
     reverbDecay: 2.5,
-    warmth: 0.6,
+    padDetune: 8,
+    sparkleFreqRange: [800, 1600],
+    sparkleAttack: 0.01,
+    sparkleDecay: 0.15,
+    chorusDepth: 0.3,
   },
   'eucalyptus-hinoki': {
-    baseFreq: 280,
-    harmonicRatios: [1, 1.33, 2, 3],
-    filterBase: 1200,
+    baseFreq: 260,
+    harmonicRatios: [1, 2, 3, 5],
+    filterFreq: 2400,
+    filterQ: 0.8,
     noiseColor: 'white',
-    reverbDecay: 3,
-    warmth: 0.3,
+    reverbDecay: 3.0,
+    padDetune: 4,
+    sparkleFreqRange: [1200, 2400],
+    sparkleAttack: 0.005,
+    sparkleDecay: 0.1,
+    chorusDepth: 0.2,
   },
   'bergamot-amber': {
     baseFreq: 196,
-    harmonicRatios: [1, 1.25, 1.5, 2],
-    filterBase: 900,
+    harmonicRatios: [1, 1.25, 2, 2.5],
+    filterFreq: 2000,
+    filterQ: 1.0,
     noiseColor: 'pink',
-    reverbDecay: 2.8,
-    warmth: 0.5,
+    reverbDecay: 3.5,
+    padDetune: 6,
+    sparkleFreqRange: [900, 1800],
+    sparkleAttack: 0.02,
+    sparkleDecay: 0.2,
+    chorusDepth: 0.5,
   },
   'blacktea-palo': {
-    baseFreq: 165,
-    harmonicRatios: [1, 1.2, 1.5, 1.8],
-    filterBase: 600,
+    baseFreq: 174,
+    harmonicRatios: [1, 1.5, 2, 2.5],
+    filterFreq: 1400,
+    filterQ: 1.5,
     noiseColor: 'brown',
-    reverbDecay: 3.5,
-    warmth: 0.7,
+    reverbDecay: 4.0,
+    padDetune: 10,
+    sparkleFreqRange: [600, 1200],
+    sparkleAttack: 0.03,
+    sparkleDecay: 0.25,
+    chorusDepth: 0.35,
   },
 };
 
-export class SoundEngine {
-  private noise: Tone.Noise | null = null;
+const SPRAY_SCALE = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21];
+
+class SoundEngine {
+  private isInitialized = false;
+  private currentScent: ScentVariant = 'eucalyptus-hinoki';
+  private clarity = 0.15;
+  private sprayStrength = 0.5;
+
+  private padSynth: Tone.PolySynth | null = null;
+  private padFilter: Tone.Filter | null = null;
+  private noiseSource: Tone.Noise | null = null;
   private noiseFilter: Tone.Filter | null = null;
   private noiseGain: Tone.Gain | null = null;
-  private pad: Tone.PolySynth | null = null;
-  private padFilter: Tone.Filter | null = null;
-  private padGain: Tone.Gain | null = null;
   private reverb: Tone.Reverb | null = null;
+  private chorus: Tone.Chorus | null = null;
+  private limiter: Tone.Limiter | null = null;
   private masterGain: Tone.Gain | null = null;
-  private clickSynth: Tone.MembraneSynth | null = null;
+  private spraySynth: Tone.Synth | null = null;
+  private sparkleNoise: Tone.Noise | null = null;
+  private sparkleFilter: Tone.Filter | null = null;
+  private sparkleGain: Tone.Gain | null = null;
+  private glimmerSynth: Tone.Synth | null = null;
   private closureSynth: Tone.PolySynth | null = null;
-  
-  private currentScent: ScentVariant = 'eucalyptus-hinoki';
-  private clarity: number = 0;
-  private isPlaying: boolean = false;
-  private padNotes: string[] = [];
-  private detuneOsc: Tone.LFO | null = null;
+  private suctionNoise: Tone.Noise | null = null;
+  private suctionFilter: Tone.Filter | null = null;
 
-  async initialize() {
+  async initialize(): Promise<void> {
+    if (this.isInitialized) return;
     await Tone.start();
-    
-    // Master output
-    this.masterGain = new Tone.Gain(0.6).toDestination();
-    
-    // Reverb
-    this.reverb = new Tone.Reverb({
-      decay: 3,
-      wet: 0.4,
-    }).connect(this.masterGain);
+
+    this.limiter = new Tone.Limiter(-3).toDestination();
+    this.masterGain = new Tone.Gain(0.5).connect(this.limiter);
+
+    this.reverb = new Tone.Reverb({ decay: 3, wet: 0.4 }).connect(this.masterGain);
     await this.reverb.generate();
-    
-    // Noise layer
-    this.noiseFilter = new Tone.Filter({
-      frequency: 2000,
-      type: 'lowpass',
-      rolloff: -24,
-    }).connect(this.reverb);
-    
-    this.noiseGain = new Tone.Gain(0.15).connect(this.noiseFilter);
-    this.noise = new Tone.Noise('pink').connect(this.noiseGain);
-    
-    // Pad synth
-    this.padFilter = new Tone.Filter({
-      frequency: 1000,
-      type: 'lowpass',
-      rolloff: -12,
-    }).connect(this.reverb);
-    
-    this.padGain = new Tone.Gain(0.25).connect(this.padFilter);
-    
-    this.pad = new Tone.PolySynth(Tone.Synth, {
+
+    this.chorus = new Tone.Chorus({ frequency: 0.5, delayTime: 3.5, depth: 0.3, wet: 0.3 }).connect(this.reverb);
+    this.chorus.start();
+
+    this.padFilter = new Tone.Filter({ frequency: 800, type: 'lowpass', rolloff: -12, Q: 1 }).connect(this.chorus);
+    this.padSynth = new Tone.PolySynth(Tone.Synth, {
       oscillator: { type: 'sine' },
-      envelope: {
-        attack: 2,
-        decay: 1,
-        sustain: 0.8,
-        release: 3,
-      },
-    }).connect(this.padGain);
-    
-    // Detune LFO for wobble
-    this.detuneOsc = new Tone.LFO({
-      frequency: 0.3,
-      min: -30,
-      max: 30,
-    }).start();
-    
-    // Click synth for spray
-    this.clickSynth = new Tone.MembraneSynth({
-      pitchDecay: 0.02,
-      octaves: 4,
-      envelope: {
-        attack: 0.001,
-        decay: 0.1,
-        sustain: 0,
-        release: 0.1,
-      },
-    }).connect(this.masterGain);
-    this.clickSynth.volume.value = -12;
-    
-    // Closure chord synth
-    this.closureSynth = new Tone.PolySynth(Tone.Synth, {
+      envelope: { attack: 2, decay: 1, sustain: 0.8, release: 3 },
+      volume: -20,
+    }).connect(this.padFilter);
+
+    this.noiseFilter = new Tone.Filter({ frequency: 2000, type: 'lowpass', rolloff: -24 }).connect(this.chorus);
+    this.noiseGain = new Tone.Gain(0.12).connect(this.noiseFilter);
+    this.noiseSource = new Tone.Noise({ type: 'pink', volume: -22 }).connect(this.noiseGain);
+
+    this.spraySynth = new Tone.Synth({
       oscillator: { type: 'triangle' },
-      envelope: {
-        attack: 0.1,
-        decay: 0.5,
-        sustain: 0.3,
-        release: 1.5,
-      },
+      envelope: { attack: 0.005, decay: 0.1, sustain: 0, release: 0.1 },
+      volume: -18,
     }).connect(this.reverb);
-    this.closureSynth.volume.value = -8;
-    
+
+    this.sparkleFilter = new Tone.Filter({ frequency: 4000, type: 'bandpass', Q: 2 }).connect(this.reverb);
+    this.sparkleGain = new Tone.Gain(0).connect(this.sparkleFilter);
+    this.sparkleNoise = new Tone.Noise({ type: 'white', volume: -28 }).connect(this.sparkleGain);
+
+    this.glimmerSynth = new Tone.Synth({
+      oscillator: { type: 'sine' },
+      envelope: { attack: 0.01, decay: 0.3, sustain: 0.2, release: 0.5 },
+      volume: -14,
+    }).connect(this.reverb);
+
+    this.closureSynth = new Tone.PolySynth(Tone.Synth, {
+      oscillator: { type: 'sine' },
+      envelope: { attack: 0.05, decay: 0.3, sustain: 0.4, release: 1 },
+      volume: -12,
+    }).connect(this.reverb);
+
+    this.suctionFilter = new Tone.Filter({ frequency: 200, type: 'lowpass', rolloff: -24 }).connect(this.masterGain);
+    this.suctionNoise = new Tone.Noise({ type: 'brown', volume: -22 }).connect(this.suctionFilter);
+
     this.applyScent(this.currentScent);
+    this.isInitialized = true;
   }
 
-  applyScent(scent: ScentVariant) {
+  applyScent(scent: ScentVariant): void {
     this.currentScent = scent;
     const config = SCENT_CONFIGS[scent];
-    
-    if (this.noise) {
-      this.noise.type = config.noiseColor;
-    }
-    
-    if (this.reverb) {
-      this.reverb.decay = config.reverbDecay;
-    }
-    
-    // Generate pad notes based on scent
-    const baseNote = Tone.Frequency(config.baseFreq).toNote();
-    this.padNotes = config.harmonicRatios.map((ratio) =>
-      Tone.Frequency(config.baseFreq * ratio).toNote()
-    );
-    
+    if (this.noiseSource) this.noiseSource.type = config.noiseColor;
+    if (this.padFilter) this.padFilter.Q.value = config.filterQ;
+    if (this.reverb) this.reverb.decay = config.reverbDecay;
+    if (this.chorus) this.chorus.depth = config.chorusDepth;
     this.updateClarity(this.clarity);
   }
 
-  updateClarity(value: number) {
+  updateClarity(value: number): void {
     this.clarity = Math.max(0, Math.min(1, value));
     const config = SCENT_CONFIGS[this.currentScent];
-    
-    // Noise decreases with clarity
+
     if (this.noiseGain) {
-      this.noiseGain.gain.rampTo(0.2 * (1 - this.clarity * 0.8), 0.3);
+      this.noiseGain.gain.rampTo(0.15 * (1 - this.clarity * 0.8), 0.3);
     }
-    
-    // Filter opens with clarity
     if (this.noiseFilter) {
-      const filterFreq = 800 + this.clarity * 2500;
-      this.noiseFilter.frequency.rampTo(filterFreq, 0.3);
+      this.noiseFilter.frequency.rampTo(800 + this.clarity * 2000, 0.3);
     }
-    
     if (this.padFilter) {
-      const padFilterFreq = config.filterBase + this.clarity * 1500;
-      this.padFilter.frequency.rampTo(padFilterFreq, 0.3);
+      this.padFilter.frequency.rampTo(config.filterFreq * (0.5 + this.clarity * 0.5), 0.3);
     }
-    
-    // Detune decreases with clarity
-    if (this.detuneOsc) {
-      const detuneAmount = 30 * (1 - this.clarity * 0.9);
-      this.detuneOsc.min = -detuneAmount;
-      this.detuneOsc.max = detuneAmount;
+    if (this.padSynth) {
+      this.padSynth.set({ detune: config.padDetune * (1 - this.clarity * 0.9) });
     }
-    
-    // Reverb gets drier with clarity
     if (this.reverb) {
-      this.reverb.wet.rampTo(0.5 - this.clarity * 0.25, 0.3);
-    }
-    
-    // Pad volume slightly increases with clarity
-    if (this.padGain) {
-      this.padGain.gain.rampTo(0.2 + this.clarity * 0.15, 0.3);
+      this.reverb.wet.rampTo(0.5 - this.clarity * 0.3, 0.3);
     }
   }
 
-  start() {
-    if (this.isPlaying) return;
-    this.isPlaying = true;
-    
-    this.noise?.start();
-    
-    // Start pad drone
-    if (this.pad && this.padNotes.length > 0) {
-      this.pad.triggerAttack(this.padNotes);
-    }
+  setSprayStrength(value: number): void {
+    this.sprayStrength = Math.max(0, Math.min(1, value));
   }
 
-  stop() {
-    if (!this.isPlaying) return;
-    this.isPlaying = false;
-    
-    this.noise?.stop();
-    this.pad?.releaseAll();
-  }
-
-  playSprayClick() {
-    if (this.clickSynth) {
-      const freq = 800 + Math.random() * 400;
-      this.clickSynth.triggerAttackRelease(freq, 0.05);
-    }
-  }
-
-  playClosureCue() {
-    if (!this.closureSynth) return;
-    
+  start(): void {
+    if (!this.isInitialized) return;
     const config = SCENT_CONFIGS[this.currentScent];
-    const baseFreq = config.baseFreq * 1.5;
-    
-    // Simple ascending arpeggio
-    const notes = [
-      Tone.Frequency(baseFreq).toNote(),
-      Tone.Frequency(baseFreq * 1.25).toNote(),
-      Tone.Frequency(baseFreq * 1.5).toNote(),
-    ];
-    
-    const now = Tone.now();
-    notes.forEach((note, i) => {
-      this.closureSynth?.triggerAttackRelease(note, '4n', now + i * 0.15);
-    });
+    if (this.padSynth) {
+      const notes = config.harmonicRatios.map(r => Tone.Frequency(config.baseFreq * r).toNote());
+      this.padSynth.triggerAttack(notes);
+    }
+    this.noiseSource?.start();
+    this.sparkleNoise?.start();
   }
 
-  getClarity() {
-    return this.clarity;
+  stop(): void {
+    this.padSynth?.releaseAll();
+    this.noiseSource?.stop();
+    this.sparkleNoise?.stop();
   }
 
-  getCurrentScent() {
-    return this.currentScent;
+  playSprayClick(x: number, y: number): void {
+    if (!this.isInitialized) return;
+    const config = SCENT_CONFIGS[this.currentScent];
+    const scaleIndex = Math.floor(x * SPRAY_SCALE.length);
+    const interval = SPRAY_SCALE[Math.min(scaleIndex, SPRAY_SCALE.length - 1)];
+    const freq = config.sparkleFreqRange[0] * Math.pow(2, interval / 12);
+    const brightness = 2000 + (1 - y) * 4000;
+
+    if (this.sparkleFilter) this.sparkleFilter.frequency.value = brightness;
+    if (this.spraySynth) {
+      this.spraySynth.set({ envelope: { attack: config.sparkleAttack * (0.8 + Math.random() * 0.4), decay: config.sparkleDecay } });
+      this.spraySynth.triggerAttackRelease(freq + (Math.random() - 0.5) * 20, config.sparkleDecay * (0.8 + this.sprayStrength * 0.4));
+    }
+    if (this.sparkleGain) {
+      const burstLevel = 0.08 + this.sprayStrength * 0.1;
+      this.sparkleGain.gain.setValueAtTime(burstLevel, Tone.now());
+      this.sparkleGain.gain.exponentialRampToValueAtTime(0.001, Tone.now() + 0.15);
+    }
   }
 
-  dispose() {
+  playGlimmerCapture(): void {
+    if (!this.isInitialized || !this.glimmerSynth) return;
+    const config = SCENT_CONFIGS[this.currentScent];
+    const freq = config.sparkleFreqRange[1] * 1.2;
+    this.glimmerSynth.triggerAttackRelease(freq, 0.3);
+    setTimeout(() => this.glimmerSynth?.triggerAttackRelease(freq * 1.5, 0.2), 100);
+  }
+
+  playLockCue(): void {
+    if (!this.isInitialized) return;
+    const config = SCENT_CONFIGS[this.currentScent];
+
+    if (this.suctionNoise && this.suctionFilter) {
+      this.suctionNoise.start();
+      this.suctionFilter.frequency.setValueAtTime(400, Tone.now());
+      this.suctionFilter.frequency.exponentialRampToValueAtTime(50, Tone.now() + 0.4);
+      setTimeout(() => this.suctionNoise?.stop(), 500);
+    }
+
+    setTimeout(() => {
+      if (this.closureSynth) {
+        const root = config.baseFreq * 2;
+        this.closureSynth.triggerAttackRelease([
+          Tone.Frequency(root).toNote(),
+          Tone.Frequency(root * 1.25).toNote(),
+          Tone.Frequency(root * 1.5).toNote(),
+        ], 0.8);
+      }
+    }, 300);
+  }
+
+  getClarity(): number { return this.clarity; }
+  getCurrentScent(): ScentVariant { return this.currentScent; }
+
+  dispose(): void {
     this.stop();
-    this.noise?.dispose();
-    this.noiseFilter?.dispose();
-    this.noiseGain?.dispose();
-    this.pad?.dispose();
-    this.padFilter?.dispose();
-    this.padGain?.dispose();
-    this.reverb?.dispose();
-    this.masterGain?.dispose();
-    this.clickSynth?.dispose();
-    this.closureSynth?.dispose();
-    this.detuneOsc?.dispose();
+    [this.padSynth, this.padFilter, this.noiseSource, this.noiseFilter, this.noiseGain,
+     this.reverb, this.chorus, this.limiter, this.masterGain, this.spraySynth,
+     this.sparkleNoise, this.sparkleFilter, this.sparkleGain, this.glimmerSynth,
+     this.closureSynth, this.suctionNoise, this.suctionFilter].forEach(n => n?.dispose());
+    this.isInitialized = false;
   }
 }
 
